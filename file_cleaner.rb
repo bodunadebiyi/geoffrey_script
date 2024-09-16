@@ -1,8 +1,13 @@
+require_relative './errand_extractor'
+
 class FileCleaner
   attr_accessor :tmp_file
   attr_accessor :new_file
   attr_accessor :commands
   attr_accessor :line_number
+  attr_accessor :within_cleanup_block
+  attr_accessor :indentation_count
+  attr_accessor :search_for_closing_block
 
   def initialize(tmp, new_file, commands)
     @tmp_file = tmp
@@ -19,7 +24,7 @@ class FileCleaner
 
     File.open(new_file, 'a') do |file|
       File.foreach(tmp_file) do |line|
-        intent = get_intent(line)
+        intent = FileCleaner.get_intent(line)
         @line_number += 1
 
         case intent
@@ -37,7 +42,7 @@ class FileCleaner
     File.delete(new_file) if should_delete_file
   end
 
-  def get_intent_(line)
+  def self.get_intent_(line)
     indentation_count = FileCleaner.get_indentation_count(line)
     line_contains_command = line_has_cleanup_command?(line)
 
@@ -77,7 +82,7 @@ class FileCleaner
     return :do_nothing
   end
 
-  def is_inline_cleanup?(line)
+  def self.is_inline_cleanup?(line)
     ErrandExtractor.inline_command_regex.match?(line)
   end
 

@@ -13,7 +13,7 @@ describe ErrandExtractor do
   describe "ErrandExtractor.parse_command" do
     it "parses a valid command" do
       cmd_one = "@ geoffrey remove on 2024-11-11"
-      cmd_two = "<@geoffrey remind me in 4 weeks to refactor this method"
+      cmd_two = "   <@geoffrey remind me in 4 weeks to refactor this method"
 
       parsed_command = ErrandExtractor.parse_command(cmd_one)
       parsed_command_two = ErrandExtractor.parse_command(cmd_two)
@@ -46,6 +46,18 @@ describe ErrandExtractor do
         line: "-0,0 +1,3"
       }]
       expect(errand_extractor.errands).to eq(expectation)
+    end
+  end
+
+  describe "ErrandExtractor.has_command?" do
+    it "returns true if the line contains a command" do
+      test_line = "some addition al stuff @ geoffrey cleanup in 2 weeks"
+      expect(ErrandExtractor.has_command?(test_line)).to eq(true)
+    end
+
+    it "returns false if the line does not contain a command" do
+      test_line = "def run"
+      expect(ErrandExtractor.has_command?(test_line)).to eq(false)
     end
   end
 end
