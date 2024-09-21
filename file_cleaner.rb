@@ -14,9 +14,18 @@ class FileCleaner
     @new_file = new_file
     @commands = commands
     @within_cleanup_block = false
-    @line_number = 0
+    @line_number = 1
     @indentation_count = nil
     @search_for_closing_block = false
+    validate_commands
+  end
+
+  def validate_commands
+    @commands.each do |command_payload|
+      command = command_payload[:command]
+      raise StandardError.new("Invalid command") if (command.length != 6 ||
+        !ErrandExtractor.cleanup_commands.include?(command[1].downcase))
+    end
   end
 
   def run
@@ -24,7 +33,7 @@ class FileCleaner
 
     File.open(new_file, 'a') do |file|
       File.foreach(tmp_file) do |line|
-        intent = FileCleaner.get_intent(line)
+        intent = get_intent(line)
         @line_number += 1
 
         case intent
@@ -42,11 +51,12 @@ class FileCleaner
     File.delete(new_file) if should_delete_file
   end
 
-  def self.get_intent_(line)
+  def get_intent(line)
     indentation_count = FileCleaner.get_indentation_count(line)
-    line_contains_command = line_has_cleanup_command?(line)
+    is_closing_command = FileCleaner.is_closing_command?(line)
+    line_contains_command = line_has_cleanup_command?(line) && !is_closing_command
 
-    if line_contains_command && @line_number == 1
+    if line_contains_command && (@line_number == 1)
       remove_command_from_list(ErrandExtractor.parse_command(line))
       return :delete_file
     end
@@ -55,7 +65,7 @@ class FileCleaner
       command = ErrandExtractor.parse_command(line)
       remove_command_from_list(ErrandExtractor.parse_command(line))
 
-      unless is_inline_cleanup?(line)
+      unless FileCleaner.is_inline_cleanup?(line)
         @identation_count = indentation_count
         @within_cleanup_block = true
         @search_for_closing_block = true if command[0] == '<'
@@ -64,9 +74,7 @@ class FileCleaner
     end
 
     if @within_cleanup_block && @search_for_closing_block
-      if ErrandExtractor.closing_command_regex.match?(line)
-        reset_state
-      end
+      reset_state if is_closing_command
       return :skip_line
     end
 
@@ -86,8 +94,12 @@ class FileCleaner
     ErrandExtractor.inline_command_regex.match?(line)
   end
 
+  def self.is_closing_command?(line)
+    ErrandExtractor.closing_command_regex.match?(line)
+  end
+
   def line_has_cleanup_command?(line)
-    return ErrandExtractor.has_command?(line) && command_is_valid?(ErrandExtractor.parse_command(line))
+    return ErrandExtractor.has_command?(line) && !ErrandExtractor.is_closing_command?(line) && command_is_valid?(ErrandExtractor.parse_command(line))
   end
 
   def command_is_valid?(command)
@@ -95,7 +107,7 @@ class FileCleaner
   end
 
   def remove_command_from_list(command)
-    @commands = @commands.filtter{|c| c[:command] != command}
+    @commands = @commands.filter{|c| c[:command] != command}
   end
 
   def self.get_indentation_count(line)

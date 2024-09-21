@@ -3,6 +3,7 @@ class ErrandExtractor
   attr_accessor :state
   attr_accessor :errands
 
+  CLEANUP_COMMANDS = ["cleanup", "remove", "delete", "remove file"]
   COMMAND_REGEX = /(<?)@\s*ge?off?rey\s*(remove|remind me|remider|cleanup|delete|remove\s*file)\s*(in|on|at)\s(.*?)(to|$)(.*)/i
   CONTAINS_COMMAND_REGEX = /<?@\s*ge?off?rey[^>]/i
   CLOSING_COMMAND_REGEX = /@\s*ge?off?rey\s*>/i
@@ -69,5 +70,13 @@ class ErrandExtractor
 
   def self.has_command?(text)
     CONTAINS_COMMAND_REGEX.match?(text)
+  end
+
+  def self.cleanup_commands
+    CLEANUP_COMMANDS
+  end
+
+  def self.is_closing_command?(text)
+    CLOSING_COMMAND_REGEX.match?(text)
   end
 end

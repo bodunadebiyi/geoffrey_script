@@ -69,10 +69,5 @@ end
 
 validate_options(options)
 
-
-
-
-gman = Geoffrey.new(options)
-gman.files_changed = test_payload
-gman.extract_tasks
-print gman.tasks
+print "Geoffrey has started... \n"
+Geoffrey.new(options).run

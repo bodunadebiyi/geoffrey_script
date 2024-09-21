@@ -23,14 +23,13 @@ class TaskExecutor
   end
 
   def run_cleanup_commands(command_payloads)
-    branch_name = get_new_branch_name
     exec("git checkout -b #{branch_name}")
 
     update_files(command_payloads)
 
     exec("git commit -m 'Cleanup files'")
-    exec("git push origin #{branch}")
-    TaskExecutor.create_pull_request(branch_name)
+    exec("git push origin #{get_new_branch_name}")
+    create_pull_request(branch_name)
   end
 
   private
@@ -47,11 +46,11 @@ class TaskExecutor
   end
 
   def get_new_branch_name
-    "geoffrey-cleanup-}-#{Time.now.to_i}"
+    "geoffrey-cleanup-#{Time.now.to_i}"
   end
 
-  def self.create_pull_request(branch_name)
-    github_agent
+  def create_pull_request(branch_name)
+    @github_agent
       .set_head_branch(branch_name)
       .create_pull_request("Cleanup files", "Cleanup files")
   end
