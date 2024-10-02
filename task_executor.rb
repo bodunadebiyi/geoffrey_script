@@ -13,6 +13,9 @@ class TaskExecutor
       cleanup_commands = @grouped_and_partitioned[time][0]
       remind_commands = @grouped_and_partitioned[time][1]
 
+      print "cleanup_commands: #{cleanup_commands} \n"
+      print "remind_commands: #{remind_commands} \n"
+
       remind_commands.each {|command| run_remind_command(command)} if remind_commands.any?
       run_cleanup_commands(cleanup_commands) if cleanup_commands.any?
     end
@@ -23,13 +26,32 @@ class TaskExecutor
   end
 
   def run_cleanup_commands(command_payloads)
-    exec("git checkout -b #{branch_name}")
-
+    files = command_payloads.map { |command_payload| command_payload[:filename] }.uniq
+    new_branch_name = get_new_branch_name
+    system("git checkout -b #{new_branch_name}")
     update_files(command_payloads)
+    puts "files updated..."
 
-    exec("git commit -m 'Cleanup files'")
-    exec("git push origin #{get_new_branch_name}")
-    create_pull_request(branch_name)
+    system("git add #{files.join(' ')}")
+    system("git commit -m 'Cleanup files'")
+    system("git push origin #{new_branch_name}")
+
+    puts "creating pull request..."
+
+    system("gh pr create --base #{@github_agent.options[:current_branch]} --head #{new_branch_name} --title \"Cleanup files\" --body \"Cleanup files\"")
+    system("git checkout #{@github_agent.options[:current_branch]}")
+  end
+
+  def grouped_and_partitioned
+    @grouped_and_partitioned
+  end
+
+  def group_tasks_by_time_and_partition
+    cleanup_synonyms = ['cleanup', 'delete', 'remove', 'delete file', 'remove file']
+    grouped_tasks = @tasks.group_by { |task| task[:command][3]}
+    grouped_tasks.keys.each do |time|
+      @grouped_and_partitioned[time] = grouped_tasks[time].partition { |task| cleanup_synonyms.include?(task[:command][1])}
+    end
   end
 
   private
@@ -50,20 +72,9 @@ class TaskExecutor
   end
 
   def create_pull_request(branch_name)
+    puts "creating pull request"
     @github_agent
       .set_head_branch(branch_name)
       .create_pull_request("Cleanup files", "Cleanup files")
   end
-
-  def group_tasks_by_time_and_partition
-    cleanup_synonyms = ['cleanup', 'delete', 'remove', 'delete file', 'remove file']
-    grouped_tasks = @tasks.group_by { |task| task[:time] }
-    grouped_tasks.keys.each do |time|
-      @grouped_and_partitioned[time] = grouped_tasks[time].partition { |task| cleanup_synonyms.include?(task[:command][0])}
-    end
-  end
 end
-
-# [{filename: "app/controllers/application_controller.rb", command: ["cleanup", "in", "2 weeks", "", ""], line: "-46,4 +46,21", time: 2.weeks},
-# {filename: "app/controllers/application_controller.rb", command: ["remind me", "in", "4 weeks", "to", "refactor this method"], line: "-46,4 +46,21", time: 4.weeks},
-# {filename: "app/models/employee.rb", command: ["remove", "on", "2024-11-11", "", ""], line: "-0,0 +1,3", time: "2024-11-11"}]

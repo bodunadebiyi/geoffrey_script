@@ -27,6 +27,14 @@ OptionParser.new do |opts|
    options[:actor] = a
   end
 
+  opts.on("-b", "--base-branch BASE", "Base branch") do |b|
+    options[:base_branch] = b
+  end
+
+  opts.on("-c", "--current-branch CURRENT", "Current branch") do |c|
+    options[:current_branch] = c
+  end
+
   opts.on("-h", "--help", "Prints this help") do
     puts opts
     exit
@@ -45,13 +53,16 @@ class Geoffrey
 
   def run
     retrieve_tasks_from_pull_request
+    print "Tasks data retrieved from PR... \n"
     extract_tasks
+    print "Tasks extracted... \n"
     execute_tasks
+    print "Tasks executed... \n"
     return self
   end
 
   def retrieve_tasks_from_pull_request
-    @files_changed = github_agent.load_pull_request_files.pr_files
+    @files_changed = @github_agent.load_pull_request_files.pr_files
   end
 
   def extract_tasks

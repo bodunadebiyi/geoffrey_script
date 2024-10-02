@@ -1,10 +1,8 @@
 require 'net/http'
 require 'json'
 
-
 class GithubAgent
   attr_accessor :request_headers
-  attr_accessor :base_branch
   attr_accessor :head_branch
 
   GITHUB_BASE_URL = 'https://api.github.com'
@@ -53,10 +51,30 @@ class GithubAgent
     self
   end
 
+  def delete_ref(ref_name)
+    uri = URI(delete_ref_uri(ref_name))
+    req = Net::HTTP::Delete.new(uri, 'Content-Type' => 'application/json')
+    req.initialize_http_header(@request_headers)
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
+      http.request(req)
+    end
+
+    raise StandardError.new("Failed to delete ref") unless res.code.to_i >= 200 && res.code.to_i < 300
+    self
+  end
+
+  def options
+    @options
+  end
+
   private
 
   def pull_request_files_uri
     "#{GITHUB_BASE_URL}/repos/#{options[:user]}/#{options[:repo]}/pulls/#{options[:pull_request_num]}/files"
+  end
+
+  def delete_ref_uri(ref_name)
+    "#{GITHUB_BASE_URL}/repos/#{options[:user]}/#{options[:repo]}/git/refs/#{ref_name}"
   end
 
   def pull_request_uri
@@ -65,10 +83,6 @@ class GithubAgent
 
   def options=(options)
     @options = options
-  end
-
-  def options
-    @options
   end
 
   def pr_files=(pr_files)

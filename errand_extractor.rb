@@ -1,4 +1,3 @@
-
 class ErrandExtractor
   attr_accessor :state
   attr_accessor :errands
@@ -22,6 +21,7 @@ class ErrandExtractor
         decision_engine(line, file['filename'])
       end
     end
+    return self
   end
 
   def decision_engine(line, filename)

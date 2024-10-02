@@ -1,22 +1,13 @@
 require_relative './errand_extractor'
 
 class FileCleaner
-  attr_accessor :tmp_file
-  attr_accessor :new_file
-  attr_accessor :commands
-  attr_accessor :line_number
-  attr_accessor :within_cleanup_block
-  attr_accessor :indentation_count
-  attr_accessor :search_for_closing_block
-
   def initialize(tmp, new_file, commands)
     @tmp_file = tmp
     @new_file = new_file
     @commands = commands
-    @within_cleanup_block = false
     @line_number = 1
-    @indentation_count = nil
-    @search_for_closing_block = false
+    @prev_line = nil
+    @state = initial_state
     validate_commands
   end
 
@@ -31,8 +22,8 @@ class FileCleaner
   def run
     should_delete_file = false
 
-    File.open(new_file, 'a') do |file|
-      File.foreach(tmp_file) do |line|
+    File.open(@new_file, 'a') do |file|
+      File.foreach(@tmp_file) do |line|
         intent = get_intent(line)
         @line_number += 1
 
@@ -48,46 +39,63 @@ class FileCleaner
       end
     end
 
-    File.delete(new_file) if should_delete_file
+    File.delete(@new_file) if should_delete_file
+  end
+
+  def setup_block_cleanup(command, curr_indentation_count)
+    update_state(:within_cleanup_block, true)
+    update_state(:search_for_closing_block, command[0] == '<')
+    update_state(:block_indentation_count, curr_indentation_count)
+  end
+
+  def get_intent_dep(line)
+    curr_indentation_count = FileCleaner.get_indentation_count(line)
+    is_closing_command = FileCleaner.is_closing_command?(line)
+    line_contains_command = line_has_cleanup_command?(line) && !is_closing_command
+    return [curr_indentation_count, is_closing_command, line_contains_command]
   end
 
   def get_intent(line)
-    indentation_count = FileCleaner.get_indentation_count(line)
-    is_closing_command = FileCleaner.is_closing_command?(line)
-    line_contains_command = line_has_cleanup_command?(line) && !is_closing_command
+    result = :do_nothing
+    curr_indentation_count, is_closing_command, line_contains_command = get_intent_dep(line)
+    return :delete_file if line_contains_command && (@line_number == 1) # everything halts
 
-    if line_contains_command && (@line_number == 1)
-      remove_command_from_list(ErrandExtractor.parse_command(line))
-      return :delete_file
-    end
-
-    if line_contains_command && !@within_cleanup_block
+    # we just found a command
+    if line_contains_command && !@state[:within_cleanup_block]
+      reset_state
       command = ErrandExtractor.parse_command(line)
       remove_command_from_list(ErrandExtractor.parse_command(line))
-
-      unless FileCleaner.is_inline_cleanup?(line)
-        @identation_count = indentation_count
-        @within_cleanup_block = true
-        @search_for_closing_block = true if command[0] == '<'
-      end
-      return :skip_line
-    end
-
-    if @within_cleanup_block && @search_for_closing_block
+      setup_block_cleanup(command, curr_indentation_count) if !FileCleaner.is_inline_cleanup?(line)
+      result = :skip_line
+    elsif @state[:within_cleanup_block] && @state[:search_for_closing_block]
       reset_state if is_closing_command
-      return :skip_line
-    end
-
-    if @within_cleanup_block && !@search_for_closing_block
-      if indentation_count > @indentation_count && !line.strip.empty?
-        return :skip_line
+      result = :skip_line
+    elsif @state[:within_cleanup_block] && !@state[:search_for_closing_block]
+      if curr_indentation_count > @state[:block_indentation_count]
+        update_state(:went_up_a_level_within_block, true)
+        result = :skip_line
+      elsif curr_indentation_count < @state[:block_indentation_count]
+        result = close_cleanup_block
+      elsif curr_indentation_count == @state[:block_indentation_count]
+        if line.strip.empty?
+          result = :skip_line
+        elsif !@state[:went_up_a_level_within_block]
+          result = :skip_line
+        elsif @state[:went_up_a_level_within_block] && @prev_line.strip.empty?
+          result = close_cleanup_block
+        elsif @state[:went_up_a_level_within_block] && !@prev_line.strip.empty?
+          result = :skip_line
+          reset_state
+        end
       else
-        reset_state unless line.strip.empty?
-        return :do_nothing
+        result = :skip_line
       end
+    else
+      result = :do_nothing
     end
 
-    return :do_nothing
+    @prev_line = line
+    return result
   end
 
   def self.is_inline_cleanup?(line)
@@ -115,8 +123,24 @@ class FileCleaner
   end
 
   def reset_state
-    @within_cleanup_block = false
-    @indentation_count = nil
-    @search_for_closing_block = false
+    @state = initial_state
+  end
+
+  def initial_state
+    {
+      within_cleanup_block: false,
+      block_indentation_count: nil,
+      search_for_closing_block: false,
+      went_up_a_level_within_block: false
+    }
+  end
+
+  def update_state(key, value)
+    @state[key] = value
+  end
+
+  def close_cleanup_block
+    reset_state
+    :do_nothing
   end
 end
