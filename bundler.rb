@@ -1,12 +1,12 @@
 require_commands = ""
-tmp_file = "bundled_tmp.rb"
-bundled_file = "bundled.rb"
+tmp_file = "geoffrey-script-tmp.rb"
+bundled_file = "geoffrey-script.rb"
 files_to_bundle = [
-  "github_agent.rb",
-  "errand_extractor.rb",
-  "file_cleaner.rb",
-  "task_executor.rb",
-  "geoffrey.rb",
+  "src/github_agent.rb",
+  "src/errand_extractor.rb",
+  "src/file_cleaner.rb",
+  "src/task_executor.rb",
+  "src/geoffrey.rb",
 ]
 
 

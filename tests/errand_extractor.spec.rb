@@ -1,6 +1,6 @@
 require 'rspec'
-require_relative 'test_data'
-require_relative 'errand_extractor'
+require_relative '../test_data'
+require_relative '../src/errand_extractor'
 
 describe ErrandExtractor do
   describe "ErrandExtractor.capture" do

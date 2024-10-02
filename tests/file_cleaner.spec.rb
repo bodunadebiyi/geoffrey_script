@@ -1,5 +1,5 @@
 require 'rspec'
-require_relative 'file_cleaner'
+require_relative '../src/file_cleaner'
 
 def commands
   [{filename: "app/controllers/application_controller.rb", command: ["", "cleanup", "in", "2 weeks", "", ""], line: "-46,4 +46,21"},

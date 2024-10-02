@@ -1,7 +1,7 @@
 require 'rspec'
-require_relative 'test_data'
-require_relative 'errand_extractor'
-require_relative 'task_executor'
+require_relative '../test_data'
+require_relative '../src/errand_extractor'
+require_relative '../src/task_executor'
 
 describe TaskExecutor do
   describe "TaskExecutor.group_tasks" do
