@@ -6,7 +6,9 @@ files_to_bundle = [
   "src/errand_extractor.rb",
   "src/file_cleaner.rb",
   "src/task_executor.rb",
+  "src/command_validator.rb",
   "src/geoffrey.rb",
+  "src/geoffrey_runner.rb",
 ]
 
 

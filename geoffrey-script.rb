@@ -68,6 +68,14 @@ class GithubAgent
     @options
   end
 
+  def pr_review_comment(comment, start_line, end_line, file_path)
+    system("gh api --method POST -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" /repos/#{options[:user]}/#{options[:repo]}/pulls/#{options[:pull_request_num]}/comments -f \"body=#{comment}\" -f \"commit_id=#{options[:sha]}\" -f \"path=#{file_path}\" -F \"start_line=#{start_line}\" -f \"start_side=RIGHT\" -F \"line=#{end_line}\" -f \"side=RIGHT\"")
+  end
+
+  def create_pr(base_branch, head_branch, title, body)
+    system("gh pr create --base #{base_branch} --head #{head_branch} --title \"#{title}\" --body \"#{body}\"")
+  end
+
   private
 
   def pull_request_files_uri
@@ -103,6 +111,7 @@ class ErrandExtractor
   attr_accessor :state
   attr_accessor :errands
 
+  OTHER_COMMANDS = ["remider", "remind me"]
   CLEANUP_COMMANDS = ["cleanup", "remove", "delete", "remove file"]
   COMMAND_REGEX = /(<?)@\s*ge?off?rey\s*(remove|remind me|remider|cleanup|delete|remove\s*file)\s*(in|on|at)\s(.*?)(to|$)(.*)/i
   CONTAINS_COMMAND_REGEX = /<?@\s*ge?off?rey[^>]/i
@@ -115,9 +124,10 @@ class ErrandExtractor
     @state = {}
   end
 
+
   def run
     @file_changes.each do |file|
-      next unless (file["additions"] > 0) && (file["status"] == "modified" || file["status"] == "added")
+      next unless ErrandExtractor.valid_file_change(file)
       file["patch"].split("\n").each do |line|
         decision_engine(line, file['filename'])
       end
@@ -143,10 +153,34 @@ class ErrandExtractor
     end
   end
 
+  def self.valid_file_change(file_change)
+    file_change["additions"] > 0 && (file_change["status"] == "modified" || file_change["status"] == "added") && !file_change["filename"].match?(/geoffrey-script/i)
+  end
+
   def self.parse_command(raw_command_string)
     command = raw_command_string.scan(COMMAND_REGEX).flatten.map(&:strip)
-    raise StandardError.new("Invalid command") unless command.length == 6
+    command_validty = check_command_validity(command)
+
+    if command_validty.any?
+      raise StandardError.new(command_validty.join(", "))
+    end
+
     return command
+  end
+
+  def self.check_command_validity(command_component)
+    invalid_reasons = []
+    invalid_reasons << "Invalid command" if command_component.length != 6
+    invalid_reasons << "Incorrect prequal tag for command, should be '<'" if !["", "<"].include?(command_component[0])
+    invalid_reasons << "Invalid instruction. Use remove, remind or cleanup" if ![*CLEANUP_COMMANDS, *OTHER_COMMANDS].include?(command_component[1].downcase)
+    invalid_reasons << "Invalid time instruction. Use in, on or at" if !['in', 'on', 'at'].include?(command_component[2].downcase)
+    invalid_reasons << "Invalid time format" if !command_component[3].match?(/\d+-\d+-\d+|\d+\s*(days?|weeks?|months?|hours?|minutes?|seconds?|years?)/)
+
+    return invalid_reasons
+  end
+
+  def self.is_inline_cleanup?(line)
+    IS_INLINE_COMMAND_REGEX.match
   end
 
   def self.capture_command_regex
@@ -410,6 +444,108 @@ class TaskExecutor
 end
 
 
+class CommandValidator
+  def initialize(file_changes, github_agent)
+    @file_changes = file_changes
+    @github_agent = github_agent
+    @files_with_invalid_commands = []
+    @invalid_command_reasons = ''
+  end
+
+  def run
+    @file_changes.each do |file|
+      next unless ErrandExtractor.valid_file_change(file)
+      file["patch"].split("\n").each do |line|
+        get_files_with_invalid_command(line, file['filename'])
+      end
+    end
+    push_invalid_command_to_message_to_pr
+  end
+
+  def get_files_with_invalid_command(line, filename)
+    @files_with_invalid_commands << {filename: filename, line: line} if contains_invalid_command?(line)
+  end
+
+  def contains_invalid_command?(line)
+    return false unless ErrandExtractor.has_command?(line)
+    begin
+      ErrandExtractor.parse_command(line)
+      return false
+    rescue => e
+      @invalid_command_reasons = e.message
+      return true
+    end
+  end
+
+  def push_invalid_command_to_message_to_pr
+    print "files with invalid commands:: ", @files_with_invalid_commands if @files_with_invalid_commands.any?
+    @files_with_invalid_commands.each do |file|
+      line_number = 1
+      File.foreach(file[:filename]) do |line|
+        send_note_to_pr(file[:filename], line_number) if contains_invalid_command?(line)
+        line_number += 1
+      end
+    end
+  end
+
+  def send_note_to_pr(filename, line_number)
+    puts "Sending note to PR"
+    @github_agent.pr_review_comment(error_message, line_number - 1, line_number, filename)
+  end
+
+  def error_message
+    @invalid_command_reasons + "\n" +
+    "We do not understand this Geoffrey command. Please enter the correct syntax. \nValid Command Example: `@geoffrey <cleanup|remind|delet|remove> <in|at|on> 2 <hours|weeks|days|months|years>`"
+  end
+end
+
+
+class Geoffrey
+  attr_accessor :options
+  attr_accessor :files_changed
+  attr_accessor :tasks
+
+  def initialize(options)
+    @options = options
+    @github_agent = GithubAgent.new(@options)
+  end
+
+  def run
+    retrieve_tasks_from_pull_request
+    extract_tasks
+    execute_tasks
+
+    return self
+  end
+
+  def validate_commands
+    retrieve_tasks_from_pull_request
+    run_validator
+
+    return self
+  end
+
+  def retrieve_tasks_from_pull_request
+    @files_changed = @github_agent.load_pull_request_files.pr_files
+    print "Tasks data retrieved from PR... \n"
+  end
+
+  def extract_tasks
+    @tasks = ErrandExtractor.new(@files_changed).run.errands
+    print "Tasks extracted... \n"
+  end
+
+  def execute_tasks
+    TaskExecutor.new(@github_agent, @tasks, @options[:actor]).execute_tasks
+  end
+
+  def run_validator
+    CommandValidator.new(@files_changed, @github_agent).run
+    print "File validation completed... \n"
+  end
+end
+
+
 options = {}
 
 OptionParser.new do |opts|
@@ -443,44 +579,19 @@ OptionParser.new do |opts|
     options[:current_branch] = c
   end
 
+  opts.on("-s", "--sha SHA", "Latest SHA") do |s|
+    options[:sha] = s
+  end
+
+  opts.on("-e", "--run-action RUNACTION", "Run action") do |e|
+    options[:run_action] = e
+  end
+
   opts.on("-h", "--help", "Prints this help") do
     puts opts
     exit
   end
 end.parse!
-
-class Geoffrey
-  attr_accessor :options
-  attr_accessor :files_changed
-  attr_accessor :tasks
-
-  def initialize(options)
-    @options = options
-    @github_agent = GithubAgent.new(@options)
-  end
-
-  def run
-    retrieve_tasks_from_pull_request
-    print "Tasks data retrieved from PR... \n"
-    extract_tasks
-    print "Tasks extracted... \n"
-    execute_tasks
-    print "Tasks executed... \n"
-    return self
-  end
-
-  def retrieve_tasks_from_pull_request
-    @files_changed = @github_agent.load_pull_request_files.pr_files
-  end
-
-  def extract_tasks
-    @tasks = ErrandExtractor.new(@files_changed).run.errands
-  end
-
-  def execute_tasks
-    TaskExecutor.new(@github_agent, @tasks, @options[:actor]).execute_tasks
-  end
-end
 
 def validate_options options
   raise StandardError.new("Missing required options") unless options[:repo] && options[:user] && options[:pull_request_num] && options[:token] && options[:actor]
@@ -488,6 +599,13 @@ end
 
 validate_options(options)
 
-print "Geoffrey has started... \n"
-Geoffrey.new(options).run
+if options[:run_action] == "validate"
+  print "Geoffrey command validator has started... \n"
+  Geoffrey.new(options).validate_commands
+elsif options[:run_action] == "run"
+  print "Geoffrey runner has started... \n"
+  Geoffrey.new(options).run
+else
+  print "Invalid action specified. Exiting... \n"
+end
 

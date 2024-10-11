@@ -67,6 +67,14 @@ class GithubAgent
     @options
   end
 
+  def pr_review_comment(comment, start_line, end_line, file_path)
+    system("gh api --method POST -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" /repos/#{options[:user]}/#{options[:repo]}/pulls/#{options[:pull_request_num]}/comments -f \"body=#{comment}\" -f \"commit_id=#{options[:sha]}\" -f \"path=#{file_path}\" -F \"start_line=#{start_line}\" -f \"start_side=RIGHT\" -F \"line=#{end_line}\" -f \"side=RIGHT\"")
+  end
+
+  def create_pr(base_branch, head_branch, title, body)
+    system("gh pr create --base #{base_branch} --head #{head_branch} --title \"#{title}\" --body \"#{body}\"")
+  end
+
   private
 
   def pull_request_files_uri
