@@ -514,7 +514,7 @@ class Geoffrey
     retrieve_tasks_from_pull_request
     extract_tasks
     execute_tasks
-
+    create_tickets_on_geoffrey_app
     return self
   end
 
@@ -542,6 +542,10 @@ class Geoffrey
   def run_validator
     CommandValidator.new(@files_changed, @github_agent).run
     print "File validation completed... \n"
+  end
+
+  def create_tickets_on_geoffrey_app
+    print "Sending to Geoffrey app... \n"
   end
 end
 
