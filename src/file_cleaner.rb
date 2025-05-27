@@ -110,7 +110,6 @@ class FileCleaner
     return ErrandExtractor.has_command?(line) && !ErrandExtractor.is_closing_command?(line) && command_is_valid?(ErrandExtractor.parse_command(line))
   end
 
-  # @geoffrey remind me to write tests for this function in 3 days
   def command_is_valid?(command)
     @commands.any?{|c| c[:command] == command}
   end
