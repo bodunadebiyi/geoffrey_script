@@ -127,7 +127,6 @@ class FileCleaner
     @state = initial_state
   end
 
-  # TODO: Refactor this to use a more robust state management system
   def initial_state
     {
       within_cleanup_block: false,
